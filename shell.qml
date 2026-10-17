@@ -28,6 +28,9 @@ PanelWindow {
     property color textColor: "#ffe8ee"
     property color hoverColor: "#58101d"
 
+    // Folder holding wifi.py, bluetooth.py, portal_common.py, style.css
+    property string portalDir: Quickshell.shellDir + "/components"
+
     property string currentTime: Qt.formatDateTime(new Date(), "hh:mm AP")
     property string currentDate: Qt.formatDateTime(new Date(), "dddd, d MMMM yyyy")
     property string songTitle: "Checking Spotify…"
@@ -48,6 +51,21 @@ PanelWindow {
         // Quickshell Process is controlled through its running property.
         proc.running = false
         proc.running = true
+    }
+
+    property int brightnessTarget: 50
+    property int volumeTarget: 50
+
+    function setBrightness(v) {
+        root.brightnessTarget = Math.max(1, v)      // never fully black
+        root.brightnessState = root.brightnessTarget + "%"
+        if (!brightnessTimer.running) brightnessTimer.start()
+    }
+
+    function setVolume(v) {
+        root.volumeTarget = v
+        root.volumeState = v + "%"
+        if (!volumeTimer.running) volumeTimer.start()
     }
 
     function refreshSystem() {
@@ -151,12 +169,12 @@ Process {
     Process {
         id: volumeProcess
         command: ["sh", "-lc", "wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | awk '{printf \"%d%%\", $2*100}'"]
-        stdout: StdioCollector { onStreamFinished: root.volumeState = text.trim() === "" ? "N/A" : text.trim() }
+        stdout: StdioCollector { onStreamFinished: if (!volumeSlider.dragging) root.volumeState = text.trim() === "" ? "N/A" : text.trim() }
     }
     Process {
         id: brightnessProcess
         command: ["sh", "-lc", "b=$(brightnessctl -m 2>/dev/null | cut -d, -f4 | tr -d '%'); [ -n \"$b\" ] && echo \"$b%\" || echo N/A"]
-        stdout: StdioCollector { onStreamFinished: root.brightnessState = text.trim() }
+        stdout: StdioCollector { onStreamFinished: if (!brightnessSlider.dragging) root.brightnessState = text.trim() }
     }
     Process {
         id: profileProcess
@@ -294,7 +312,8 @@ Process {
                             }
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: root.runProcess(wifiTerminal)
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.runProcess(wifiPortal)
                             }
                         }
 
@@ -311,7 +330,12 @@ Process {
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: "BLUETOOTH"; color: root.muted; font.pixelSize: 8; font.letterSpacing: 1 }
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.bluetoothState; color: root.textColor; font.pixelSize: 11 }
                             }
-                            MouseArea { anchors.fill: parent; onClicked: root.runProcess(bluetoothToggle) }
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: mouse => root.runProcess(mouse.button === Qt.RightButton ? bluetoothToggle : bluetoothPortal)
+                            }
                         }
 
                         Rectangle {
@@ -367,20 +391,17 @@ Process {
                             spacing: 12
                             Text { text: "☼"; color: root.cherry; font.pixelSize: 21 }
                             Text { text: "BRIGHTNESS"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
-                            Rectangle {
+                            HSlider {
+                                id: brightnessSlider
                                 Layout.fillWidth: true
-                                height: 7
-                                radius: 4
-                                color: root.borderColor
-                                Rectangle {
-                                    width: Math.max(6, parent.width * (parseInt(root.brightnessState) || 0) / 100)
-                                    height: parent.height
-                                    radius: 4
-                                    color: root.cherry
-                                }
+                                Layout.preferredHeight: 24
+                                value: parseInt(root.brightnessState) || 0
+                                trackColor: root.borderColor
+                                fillColor: root.cherry
+                                handleColor: root.textColor
+                                onMoved: v => root.setBrightness(v)
                             }
                             Text { text: root.brightnessState; color: root.textColor; font.pixelSize: 11 }
-                            MouseArea { anchors.fill: parent; onClicked: root.runProcess(brightnessUp) }
                         }
                     }
 
@@ -395,22 +416,22 @@ Process {
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
                             spacing: 12
-                            Text { text: "◖"; color: root.cherry; font.pixelSize: 20 }
+                            Text {
+                                text: "◖"; color: root.cherry; font.pixelSize: 20
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.runProcess(volumeToggle) }
+                            }
                             Text { text: "VOLUME"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
-                            Rectangle {
+                            HSlider {
+                                id: volumeSlider
                                 Layout.fillWidth: true
-                                height: 7
-                                radius: 4
-                                color: root.borderColor
-                                Rectangle {
-                                    width: Math.max(6, parent.width * (parseInt(root.volumeState) || 0) / 100)
-                                    height: parent.height
-                                    radius: 4
-                                    color: root.cherry
-                                }
+                                Layout.preferredHeight: 24
+                                value: parseInt(root.volumeState) || 0
+                                trackColor: root.borderColor
+                                fillColor: root.cherry
+                                handleColor: root.textColor
+                                onMoved: v => root.setVolume(v)
                             }
                             Text { text: root.volumeState; color: root.textColor; font.pixelSize: 11 }
-                            MouseArea { anchors.fill: parent; onClicked: root.runProcess(volumeToggle) }
                         }
                     }
 
@@ -488,8 +509,14 @@ Process {
     Process { id: previousTrack; command: ["playerctl", "previous"] }
     Process { id: toggleTrack; command: ["playerctl", "play-pause"] }
     Process { id: nextTrack; command: ["playerctl", "next"] }
-    Process { id: wifiTerminal; command: ["kitty", "-e", "iwctl"] }
+    // Popups: setsid so they outlive the click; a second click toggles them closed.
+    Process { id: wifiPortal; command: ["sh", "-c", "setsid -f python3 \"" + root.portalDir + "/wifi.py\" >>/tmp/portal-wifi.log 2>&1"] }
+    Process { id: bluetoothPortal; command: ["sh", "-c", "setsid -f python3 \"" + root.portalDir + "/bluetooth.py\" >>/tmp/portal-bluetooth.log 2>&1"] }
     Process { id: bluetoothToggle; command: ["sh", "-lc", "if bluetoothctl show | grep -q 'Powered: yes'; then bluetoothctl power off; else bluetoothctl power on; fi"] }
+    Timer { id: brightnessTimer; interval: 50; onTriggered: root.runProcess(brightnessSet) }
+    Timer { id: volumeTimer; interval: 50; onTriggered: root.runProcess(volumeSet) }
+    Process { id: brightnessSet; command: ["brightnessctl", "set", root.brightnessTarget + "%"] }
+    Process { id: volumeSet; command: ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", (root.volumeTarget / 100).toFixed(2)] }
     Process { id: volumeToggle; command: ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"] }
     Process { id: brightnessUp; command: ["brightnessctl", "set", "+5%"] }
     Process { id: refreshAfterAction; command: ["true"] }
