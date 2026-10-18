@@ -1,4 +1,5 @@
-# razp
+# RAZP
+
 
 A cherry-red dashboard for Hyprland, built with Quickshell. Opens from a button in Waybar. Shows music, Wi-Fi, volume, brightness, battery, Bluetooth, power profile, calendar, to-dos and an app launcher. Closes with `Esc` or by clicking outside.
 
@@ -53,7 +54,7 @@ Add to `~/.config/waybar/modules.json`:
 Add `"custom/razp"` to `modules-right` in `config.jsonc`, and `#custom-razp` to your pill rule in `style.css`. Then:
 
 ```sh
-pkill waybar; waybar &
+pkill waybar && waybar & disown
 ```
 
 ## Autostart
