@@ -1,6 +1,6 @@
 # razp
 
-<img width="1826" height="749" alt="image" src="https://github.com/user-attachments/assets/ce6063c0-3f9c-4824-9aa2-0a99f7df4356" />
+<img width="1661" height="708" alt="image" src="https://github.com/user-attachments/assets/aa40e914-84fc-45bf-910b-9516bd41a280" />
 
 
 inital looks, is currently in work
