@@ -1,5 +1,3 @@
-#!/bin/sh
-# Toggle the razp dashboard; start razp first if it isn't running.
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 LOG=/tmp/razp-toggle.log
 echo "--- $(date) click" >> "$LOG"

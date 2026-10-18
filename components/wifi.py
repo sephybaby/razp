@@ -15,12 +15,9 @@ NETWORK_IF = "net.connman.iwd.Network"
 KNOWN_IF = "net.connman.iwd.KnownNetwork"
 
 BARS = ["▂", "▄", "▆", "█"]
-SECURITY_TAG = {"open": "open", "8021x": "802.1x", "wep": "wep"}  # plain WPA shows nothing
+SECURITY_TAG = {"open": "open", "8021x": "802.1x", "wep": "wep"}
 
 
-# --------------------------------------------------------------------------
-# iwd helpers
-# --------------------------------------------------------------------------
 def bars_from_signal(signal):
     """iwd reports signal in hundredths of a dBm."""
     dbm = signal / 100.0
@@ -55,7 +52,8 @@ def fetch():
         props = ifaces.get(DEVICE_IF)
         if props and props.get("Name") == DEVICE:
             data["device"] = path
-            data["powered"] = bool(props.get("Powered")) and STATION_IF in ifaces
+            data["powered"] = bool(props.get("Powered")
+                                   ) and STATION_IF in ifaces
             if STATION_IF in ifaces:
                 data["station"] = path
     if data["device"] is None:
@@ -63,13 +61,14 @@ def fetch():
                          % DEVICE)
         return data
     if data["station"] is None:
-        return data  # adapter is switched off
+        return data
 
     station = data["station"]
     state = objs[station][STATION_IF]
     data["scanning"] = bool(state.get("Scanning"))
     try:
-        ordered = pc.dbus_call(IWD, station, STATION_IF, "GetOrderedNetworks").unpack()[0]
+        ordered = pc.dbus_call(IWD, station, STATION_IF,
+                               "GetOrderedNetworks").unpack()[0]
     except GLib.Error as exc:
         data["error"] = "Could not list networks: %s" % pc.error_text(exc)
         return data
@@ -84,7 +83,7 @@ def fetch():
         net["connected"] = net["connected"] or path == connected_path
         nets.append(net)
         seen.add(path)
-    if connected_path and connected_path not in seen:  # connected but not in the scan list
+    if connected_path and connected_path not in seen:
         props = objs.get(connected_path, {}).get(NETWORK_IF)
         if props:
             net = make_net(connected_path, props, None)
@@ -124,9 +123,6 @@ def explain_connect_error(rc, out, net, had_password):
         ssid, " (%s)" % detail if detail else "", hint)
 
 
-# --------------------------------------------------------------------------
-# Window
-# --------------------------------------------------------------------------
 class WifiPortal(pc.Portal):
     def __init__(self):
         super().__init__("wifi", "Wi-Fi")
@@ -140,7 +136,6 @@ class WifiPortal(pc.Portal):
         self.listbox.connect("row-activated", self._on_row)
         self.refresh()
 
-    # -- password prompt ---------------------------------------------------------
     def _build_password_prompt(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         box.get_style_context().add_class("password-box")
@@ -181,7 +176,8 @@ class WifiPortal(pc.Portal):
         self.revealer.set_reveal_child(True)
         self.pw_entry.grab_focus()
         self.pinned = True
-        self.set_status('Type the password for "%s" below, then press Enter.' % net["ssid"])
+        self.set_status(
+            'Type the password for "%s" below, then press Enter.' % net["ssid"])
 
     def _hide_prompt(self):
         self.pending = None
@@ -203,26 +199,27 @@ class WifiPortal(pc.Portal):
             return True
         return False
 
-    # -- power switch ----------------------------------------------------------------
     def _on_power(self, want):
         if self._power_busy or not self.device:
             return
         self._power_busy = True
         self.pinned = False
         self._gen += 1  # drop scan results that are still on their way
-        self.set_status("Turning Wi-Fi %s…" % ("on" if want else "off"), busy=True)
+        self.set_status("Turning Wi-Fi %s…" %
+                        ("on" if want else "off"), busy=True)
         self.bg(self._power_worker, want, self.device)
 
     def _power_worker(self, want, device):
         if want:
             pc.run(["rfkill", "unblock", "wifi"], 5)
         try:
-            pc.dbus_set(IWD, device, DEVICE_IF, "Powered", GLib.Variant("b", want))
+            pc.dbus_set(IWD, device, DEVICE_IF, "Powered",
+                        GLib.Variant("b", want))
         except GLib.Error as exc:
             pc.log("power %s failed: %s" % (want, pc.error_text(exc)))
             self.ui(self._power_done, want, False, pc.error_text(exc))
             return
-        for _ in range(10):  # the station comes back a moment after powering on
+        for _ in range(10):
             data = fetch()
             if data["powered"] == want:
                 break
@@ -243,9 +240,8 @@ class WifiPortal(pc.Portal):
             message = "Wi-Fi is blocked by rfkill. Run: rfkill unblock wifi"
         self.set_status("Could not turn Wi-Fi %s: %s" % ("on" if want else "off", message),
                         "error")
-        self._quick_refresh()  # snaps the switch back to the real state
+        self._quick_refresh()
 
-    # -- refreshing ------------------------------------------------------------------
     def on_refresh(self):
         self.pinned = False
         self.refresh()
@@ -265,7 +261,6 @@ class WifiPortal(pc.Portal):
         self.bg(self._quick_worker, self._gen)
 
     def _scan_worker(self, gen):
-        # What iwd already knows shows up immediately, fresh scan results stream in after.
         data = fetch()
         scannable = data["station"] is not None and not data["error"]
         self.ui(self._apply, gen, data, "partial" if scannable else "final")
@@ -274,7 +269,7 @@ class WifiPortal(pc.Portal):
         try:
             pc.dbus_call(IWD, data["station"], STATION_IF, "Scan")
         except GLib.Error:
-            pass  # already scanning is fine
+            pass
         for i in range(10):
             time.sleep(0.6)
             if gen != self._gen:
@@ -292,7 +287,7 @@ class WifiPortal(pc.Portal):
         if scan_state == "final":
             self.scanning = max(0, self.scanning - 1)
         if gen != self._gen:
-            return  # a newer refresh already redrew the list
+            return
         self.device = data["device"] or self.device
         self.station = data["station"]
         nets = data["nets"]
@@ -313,13 +308,13 @@ class WifiPortal(pc.Portal):
         current = next((n for n in nets if n["connected"]), None)
         word = "network" if count == 1 else "networks"
         if current:
-            self.set_status("Connected to %s · %d %s" % (current["ssid"], count, word), "ok")
+            self.set_status("Connected to %s · %d %s" %
+                            (current["ssid"], count, word), "ok")
         elif count:
             self.set_status("%d %s nearby · not connected" % (count, word))
         else:
             self.set_status("No networks found. Try refresh.", "error")
 
-    # -- rows ------------------------------------------------------------------------
     def _sync(self, nets):
         self.sync_rows(
             nets,
@@ -358,15 +353,18 @@ class WifiPortal(pc.Portal):
 
         if net["known"] and not net["connected"]:
             box.pack_start(
-                self.action_button("forget", lambda r=row: self._forget(r.net)),
+                self.action_button(
+                    "forget", lambda r=row: self._forget(r.net)),
                 False, False, 0)
         if net["connected"]:
             box.pack_start(
-                self.action_button("disconnect", self._disconnect, primary=True),
+                self.action_button(
+                    "disconnect", self._disconnect, primary=True),
                 False, False, 0)
         else:
             box.pack_start(
-                self.action_button("connect", lambda r=row: self._connect(r.net), primary=True),
+                self.action_button(
+                    "connect", lambda r=row: self._connect(r.net), primary=True),
                 False, False, 0)
 
         row.signal = Gtk.Label()
@@ -385,7 +383,6 @@ class WifiPortal(pc.Portal):
         else:
             self._connect(net)
 
-    # -- actions -----------------------------------------------------------------------
     def _begin(self, text):
         self.busy = True
         self.pinned = False
@@ -393,19 +390,22 @@ class WifiPortal(pc.Portal):
 
     def _after_action(self, message, ok):
         self.busy = False
-        self.pinned = True  # keep this message until the user does something else
+        self.pinned = True
         self.set_status(message, "ok" if ok else "error")
         self._quick_refresh()
 
     def _connect(self, net):
-        pc.log("connect clicked: %s (%s, known=%s)" % (net["ssid"], net["security"], net["known"]))
+        pc.log("connect clicked: %s (%s, known=%s)" %
+               (net["ssid"], net["security"], net["known"]))
         if self.busy:
-            self.set_status("Still working on the last action, one moment…", busy=True)
+            self.set_status(
+                "Still working on the last action, one moment…", busy=True)
             return
         if net["security"] == "8021x":
             self.pinned = True
             self.set_status(
-                "%s is an enterprise (802.1x) network. Configure it in iwd first." % net["ssid"],
+                "%s is an enterprise (802.1x) network. Configure it in iwd first." % net[
+                    "ssid"],
                 "error")
         elif net["security"] == "open" or net["known"]:
             self._begin("Connecting to %s…" % net["ssid"])
@@ -420,7 +420,6 @@ class WifiPortal(pc.Portal):
             cmd += ["--passphrase", password]
         rc, out = pc.run(cmd + ["station", DEVICE, "connect", ssid], 45)
         pc.log("iwctl connect %s -> rc=%s out=%r" % (ssid, rc, out))
-        # Ask iwd what it is really connected to instead of trusting the exit code.
         connected = False
         for _ in range(4 if rc == 0 else 1):
             if connected_ssid() == ssid:
@@ -443,7 +442,8 @@ class WifiPortal(pc.Portal):
         try:
             pc.dbus_call(IWD, station, STATION_IF, "Disconnect")
         except GLib.Error as exc:
-            self.ui(self._after_action, "Could not disconnect: %s" % pc.error_text(exc), False)
+            self.ui(self._after_action, "Could not disconnect: %s" %
+                    pc.error_text(exc), False)
             return
         self.ui(self._after_action, "Disconnected", True)
 
