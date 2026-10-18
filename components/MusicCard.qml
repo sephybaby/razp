@@ -51,12 +51,12 @@ Rectangle {
 
         command: [
             "sh", "-lc",
-            "playerctl metadata --format '{{title}}|{{artist}}|{{mpris:artUrl}}' 2>/dev/null || echo 'Nothing playing||'"
+            "playerctl metadata --format '{{title}}§§{{artist}}§§{{mpris:artUrl}}' 2>/dev/null || echo 'Nothing playing§§§§'"
         ]
 
         stdout: StdioCollector {
             onStreamFinished: {
-                var parts = text.trim().split("|")
+                var parts = text.trim().split("§§")
 
                 root.songTitle =
                     parts.length > 0 && parts[0] !== ""

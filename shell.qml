@@ -1,8 +1,10 @@
+//@ pragma NoReloadPopup
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
+import Quickshell.Hyprland
 import "components"
 
 PanelWindow {
@@ -17,7 +19,7 @@ PanelWindow {
     WlrLayershell.namespace: "razp-dashboard"
     WlrLayershell.layer: WlrLayer.Overlay
     // OnDemand: the dashboard only grabs the keyboard when you click a text field (to-do list)
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     property color panel: "#f2210207"
     property color surface: "#42030f"
@@ -38,16 +40,37 @@ PanelWindow {
     // Whether the dashboard is open. Starts hidden; the Waybar button toggles it with
     //   qs ipc call razp toggle        (also: show / hide)
     property bool shown: false
-    onShownChanged: if (shown) refreshSystem()
+    onShownChanged: { if (shown) refreshSystem(); else lastHidden = Date.now() }
 
     // True while the Wi-Fi or Bluetooth manager window is open: the dashboard steps aside
     // (it sits on the Overlay layer, so it would cover the window) and comes back on close.
     property bool toolOpen: wifiTool.running || bluetoothTool.running
     visible: shown && !toolOpen
 
+    // Esc closes the dashboard.
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        onActivated: root.shown = false
+    }
+
+    // Close the dashboard when you click anywhere outside it.
+    HyprlandFocusGrab {
+        windows: [root]
+        active: root.shown && !root.toolOpen
+        onCleared: root.shown = false
+    }
+
+    // The outside click that closes the dashboard also lands on the Waybar button; ignore a
+    // toggle that arrives right after a close so the button doesn't instantly reopen it.
+    property real lastHidden: 0
+
     IpcHandler {
         target: "razp"
-        function toggle(): void { root.shown = !root.shown }
+        function toggle(): void {
+            if (root.shown) root.shown = false
+            else if (Date.now() - root.lastHidden > 400) root.shown = true
+        }
         function show(): void { root.shown = true }
         function hide(): void { root.shown = false }
     }
