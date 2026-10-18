@@ -1,0 +1,19 @@
+{
+    "position": "top",
+    "margin-top": 15,
+
+    "modules-left": ["tray"],
+    "modules-center": ["hyprland/workspaces"],
+    "modules-right": [
+        "custom/razp",
+        "pulseaudio",
+        "network",
+        "backlight",
+        "power-profiles-daemon",
+        "battery",
+        "custom/notification",
+        "clock"
+    ],
+
+    "include": ["~/.config/waybar/modules.json"]
+}
