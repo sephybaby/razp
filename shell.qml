@@ -32,15 +32,33 @@ PanelWindow {
     // Obsidian folder holding the to-do note (one note per day, named DD-MM-YY.md, is created here)
     property string todoFolder: "/home/sephy/Obsidian/Uni/System/To-Dos"
 
+    // Obsidian note with your quotes, one per line (shown in the bar at the bottom)
+    property string quoteFile: "/home/sephy/Obsidian/Uni/System/Life Lessons & Quotes.md"
+
+    // Whether the dashboard is open. Starts hidden; the Waybar button toggles it with
+    //   qs ipc call razp toggle        (also: show / hide)
+    property bool shown: false
+    onShownChanged: if (shown) refreshSystem()
+
     // True while the Wi-Fi or Bluetooth manager window is open: the dashboard steps aside
     // (it sits on the Overlay layer, so it would cover the window) and comes back on close.
     property bool toolOpen: wifiTool.running || bluetoothTool.running
-    visible: !toolOpen
+    visible: shown && !toolOpen
 
-    // Command that starts `bin`, or opens a terminal with an install hint if it is missing.
+    IpcHandler {
+        target: "razp"
+        function toggle(): void { root.shown = !root.shown }
+        function show(): void { root.shown = true }
+        function hide(): void { root.shown = false }
+    }
+
+    // Starts `bin` with the cherry GTK theme from popup-theme/, or opens a terminal with an
+    // install hint if it is missing.
     function toolCommand(bin, hint) {
+        var theme = Quickshell.shellDir + "/popup-theme"
         return ["sh", "-c",
-                "command -v " + bin + " >/dev/null || exec kitty -e sh -c 'echo \"" + hint + "\"; read -r _'; exec " + bin]
+                "command -v " + bin + " >/dev/null || exec kitty -e sh -c 'echo \"" + hint + "\"; read -r _'; " +
+                "exec env XDG_CONFIG_HOME=\"" + theme + "\" GTK_THEME=Adwaita:dark " + bin]
     }
 
     property string currentTime: Qt.formatDateTime(new Date(), "hh:mm AP")
@@ -53,12 +71,18 @@ PanelWindow {
 	property string wifiDownload: "-- Mbps"
 	property string wifiUpload: "-- Mbps"
     property string batteryState: "Battery"
+    property string batteryPercent: "--"
+    property bool batteryCharging: false
     property string volumeState: "Volume"
     property string brightnessState: "Brightness"
     property string profileState: "balanced"
     property string bluetoothState: "Bluetooth"
     property string bluetoothDevice: "Not connected"
     property string musicStatus: ""
+
+    function profileLabel(value) {
+        return value === "power-saver" ? "POWER SAVING" : value === "performance" ? "PERFORMANCE" : "BALANCED"
+    }
 
     function runProcess(proc) {
         // Quickshell Process is controlled through its running property.
@@ -106,7 +130,7 @@ PanelWindow {
     }
     Timer {
         interval: 5000
-        running: true
+        running: root.shown
         repeat: true
         onTriggered: root.refreshSystem()
     }
@@ -182,8 +206,15 @@ Process {
     }
     Process {
         id: batteryProcess
-        command: ["sh", "-lc", "if [ -r /sys/class/power_supply/BAT0/capacity ]; then cat /sys/class/power_supply/BAT0/capacity; else echo '--'; fi"]
-        stdout: StdioCollector { onStreamFinished: root.batteryState = text.trim() + (text.trim() === "--" ? "" : "%") }
+        command: ["sh", "-lc", "b=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | head -n1); if [ -n \"$b\" ]; then printf '%s|%s' \"$(cat $b/capacity)\" \"$(cat $b/status)\"; else printf '%s|%s' '--' 'None'; fi"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var p = text.trim().split("|")
+                root.batteryPercent = (p[0] === "" || p[0] === "--") ? "--" : p[0] + "%"
+                root.batteryCharging = p.length > 1 && p[1] === "Charging"
+                root.batteryState = root.batteryPercent
+            }
+        }
     }
     Process {
         id: volumeProcess
@@ -251,15 +282,18 @@ Process {
                     hoverColor: root.hoverColor
                 }
 
-                // RIGHT: exact sketch structure — status row, sliders, calendar + apps
+                // RIGHT: status row, brightness + volume, calendar / apps / to-do, quote bar
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: 10
 
+                    // Row 1: time, Wi-Fi, Bluetooth, battery
                     RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 104
+                        Layout.fillHeight: false
+                        Layout.preferredHeight: 106
+                        Layout.maximumHeight: 106
                         spacing: 10
 
                         Rectangle {
@@ -382,37 +416,67 @@ Process {
                             }
                         }
 
+                        // Battery: percentage in numbers + power-mode icons
                         Rectangle {
-                            Layout.preferredWidth: 154
+                            Layout.preferredWidth: 200
                             Layout.fillHeight: true
                             radius: 16
                             color: root.surface
                             border.color: root.borderColor
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 10
-                                spacing: 5
-                                Text { text: "POWER PROFILE"; color: root.muted; font.pixelSize: 8; font.letterSpacing: 1 }
-                                Repeater {
-                                    model: [
-                                        { label: "SAVE", value: "power-saver" },
-                                        { label: "BALANCED", value: "balanced" },
-                                        { label: "PERF", value: "performance" }
-                                    ]
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        radius: 7
-                                        color: root.profileState === modelData.value ? root.surfaceLight : "transparent"
-                                        border.color: root.profileState === modelData.value ? root.cherry : root.borderColor
-                                        Text { anchors.centerIn: parent; text: modelData.label; color: root.textColor; font.pixelSize: 9 }
-                                        Process { id: profileSetter; command: ["powerprofilesctl", "set", modelData.value] }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            onClicked: {
-                                                root.runProcess(profileSetter)
-                                                root.profileState = modelData.value
+                                anchors.margins: 11
+                                spacing: 4
+                                Text {
+                                    text: "BATTERY · " + root.profileLabel(root.profileState)
+                                    color: root.muted
+                                    font.pixelSize: 9
+                                    font.letterSpacing: 1
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text { text: root.batteryPercent; color: root.textColor; font.pixelSize: 26; font.bold: true }
+                                    Text {
+                                        visible: root.batteryCharging
+                                        text: "charging"
+                                        color: root.pink
+                                        font.pixelSize: 10
+                                        Layout.alignment: Qt.AlignBottom
+                                        Layout.bottomMargin: 5
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    Repeater {
+                                        model: [
+                                            { icon: "❦", value: "power-saver" },
+                                            { icon: "⚖", value: "balanced" },
+                                            { icon: "↯", value: "performance" }
+                                        ]
+                                        delegate: Rectangle {
+                                            id: modeButton
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 28
+                                            radius: 9
+                                            color: root.profileState === modelData.value
+                                                   ? root.cherry
+                                                   : (modeMouse.containsMouse ? root.hoverColor : root.borderColor)
+                                            border.color: root.profileState === modelData.value ? root.pink : "transparent"
+                                            Text { anchors.centerIn: parent; text: modeButton.modelData.icon; color: root.textColor; font.pixelSize: 15 }
+                                            Process { id: modeSetter; command: ["powerprofilesctl", "set", modeButton.modelData.value] }
+                                            MouseArea {
+                                                id: modeMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    root.profileState = modeButton.modelData.value
+                                                    root.runProcess(modeSetter)
+                                                }
                                             }
                                         }
                                     }
@@ -421,10 +485,18 @@ Process {
                         }
                     }
 
-                    // Brightness and volume are full-width horizontal controls
+                    // Row 2: brightness and volume side by side
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: false
+                        Layout.preferredHeight: 43
+                        Layout.maximumHeight: 43
+                        spacing: 10
+
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 43
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
                         radius: 13
                         color: root.surface
                         border.color: root.borderColor
@@ -451,7 +523,8 @@ Process {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 43
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
                         radius: 13
                         color: root.surface
                         border.color: root.borderColor
@@ -479,14 +552,16 @@ Process {
                         }
                     }
 
-                    // Bottom row: calendar on the left, app buttons + to-do on the right
+                    }
+
+                    // Row 3: calendar, app shortcuts, to-do list
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 10
 
                         CalendarCard {
-                            Layout.preferredWidth: 330
+                            Layout.preferredWidth: 300
                             Layout.fillHeight: true
                             cherry: root.cherry
                             pink: root.pink
@@ -496,68 +571,85 @@ Process {
                             borderColor: root.borderColor
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
+                        // App shortcuts: two columns (edit label / icon / command here)
+                        GridLayout {
+                            Layout.preferredWidth: 224
                             Layout.fillHeight: true
-                            spacing: 10
+                            columns: 2
+                            rowSpacing: 10
+                            columnSpacing: 10
+                            uniformCellWidths: true
+                            uniformCellHeights: true
 
-                            // App shortcuts (edit label / icon / command here)
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: false      // a nested layout stretches if any child fills, so pin it
-                                Layout.preferredHeight: 48
-                                Layout.maximumHeight: 48
-                                spacing: 9
-
-                                Repeater {
-                                    model: [
-                                        { label: "Terminal", icon: ">_", command: "kitty" },
-                                        { label: "Obsidian", icon: "✧", command: "obsidian" },
-                                        { label: "Files", icon: "▤", command: "thunar || dolphin || xdg-open \"$HOME\"" },
-                                        { label: "Zen", icon: "♡", command: "flatpak run app.zen_browser.zen" }
-                                    ]
-                                    delegate: Rectangle {
-                                        id: appTile
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        radius: 13
-                                        color: tileMouse.containsMouse ? root.hoverColor : root.surface
-                                        border.color: root.borderColor
-                                        Row {
-                                            anchors.centerIn: parent
-                                            spacing: 8
-                                            Text { anchors.verticalCenter: parent.verticalCenter; text: appTile.modelData.icon; color: root.cherry; font.pixelSize: 18 }
-                                            Text { anchors.verticalCenter: parent.verticalCenter; text: appTile.modelData.label; color: root.textColor; font.pixelSize: 11 }
-                                        }
-                                        Process { id: launchApp; command: ["sh", "-lc", appTile.modelData.command] }
-                                        MouseArea {
-                                            id: tileMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.runProcess(launchApp)
+                            Repeater {
+                                model: [
+                                    { label: "Terminal", icon: ">_", command: "kitty" },
+                                    { label: "Obsidian", icon: "✧", command: "obsidian" },
+                                    { label: "Files", icon: "▤", command: "thunar || dolphin || nautilus || xdg-open \"$HOME\"" },
+                                    { label: "Zen", icon: "♡", command: "flatpak run app.zen_browser.zen" },
+                                    { label: "Vesktop", icon: "❖", command: "vesktop || flatpak run dev.vencord.Vesktop" },
+                                    { label: "Spotify", icon: "♫", command: "spotify-launcher || spotify || flatpak run com.spotify.Client" }
+                                ]
+                                delegate: Rectangle {
+                                    id: appTile
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 14
+                                    color: tileMouse.containsMouse ? root.hoverColor : root.surface
+                                    border.color: root.borderColor
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: appTile.modelData.icon; color: root.cherry; font.pixelSize: 24 }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: appTile.modelData.label; color: root.textColor; font.pixelSize: 11 }
+                                    }
+                                    Process { id: launchApp; command: ["sh", "-lc", appTile.modelData.command] }
+                                    MouseArea {
+                                        id: tileMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.runProcess(launchApp)
+                                            root.shown = false
                                         }
                                     }
                                 }
                             }
-
-                            // To-do list stored in your Obsidian vault
-                            TodoCard {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Layout.minimumHeight: 150
-                                folder: root.todoFolder
-                                cherry: root.cherry
-                                pink: root.pink
-                                muted: root.muted
-                                textColor: root.textColor
-                                surface: root.surface
-                                surfaceLight: root.surfaceLight
-                                borderColor: root.borderColor
-                                hoverColor: root.hoverColor
-                            }
                         }
+
+                        // To-do list stored in your Obsidian vault
+                        TodoCard {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.minimumHeight: 150
+                            folder: root.todoFolder
+                            cherry: root.cherry
+                            pink: root.pink
+                            muted: root.muted
+                            textColor: root.textColor
+                            surface: root.surface
+                            surfaceLight: root.surfaceLight
+                            borderColor: root.borderColor
+                            hoverColor: root.hoverColor
+                        }
+                    }
+
+                    // Quote of the moment, read from an Obsidian note
+                    QuoteBar {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: false
+                        Layout.preferredHeight: 48
+                        Layout.maximumHeight: 48
+                        filePath: root.quoteFile
+                        cherry: root.cherry
+                        pink: root.pink
+                        muted: root.muted
+                        textColor: root.textColor
+                        surface: root.surface
+                        borderColor: root.borderColor
+                        hoverColor: root.hoverColor
                     }
                 }
             }
