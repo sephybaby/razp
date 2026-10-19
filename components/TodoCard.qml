@@ -2,6 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
 
+// To-do card backed by an Obsidian note.
+//
+// Reads and writes plain Markdown tasks ("- [ ] thing" / "- [x] thing") in one
+// note, so Obsidian and the dashboard always show the same list. Everything in
+// the note that isn't a task (headings, text, blank lines) is left untouched.
 Rectangle {
     id: card
 
@@ -14,16 +19,18 @@ Rectangle {
     property color borderColor: "#240309"
     property color hoverColor: "#58101d"
 
+    // One note per day in this folder, named like 17-10-26.md (DD-MM-YY).
+    // It is created when you add the first task of the day.
     property string folder: "/home/sephy/Obsidian/Uni/System/To-Dos"
     property string today: Qt.formatDate(new Date(), "dd-MM-yy")
     readonly property string fileName: today + ".md"
     readonly property string filePath: folder + "/" + fileName
 
-    property var doc: []        
-    property string lastText: ""    
+    property var doc: []            // every line of the note, tasks and other text
+    property string lastText: ""    // what the note looked like when we last read/wrote it
     property bool loaded: false
-    property bool canSave: false    
-    property bool editing: false    
+    property bool canSave: false    // never write until we know what is in the file
+    property bool editing: false    // true while you type: don't reload under your fingers
     property int remaining: 0
     property string problem: ""
 
@@ -33,6 +40,7 @@ Rectangle {
     color: surface
     border.color: borderColor
 
+    // A new day (or a changed folder) means a different note: start clean and load it.
     onFilePathChanged: {
         saveTimer.stop()
         loaded = false
@@ -45,6 +53,9 @@ Rectangle {
         Qt.callLater(function () { file.reload() })
     }
 
+    // ------------------------------------------------------------------
+    // Markdown <-> list
+    // ------------------------------------------------------------------
     function parse(text) {
         var out = []
         var lines = text.replace(/\r/g, "").split("\n")
@@ -103,6 +114,9 @@ Rectangle {
         file.setText(t)
     }
 
+    // ------------------------------------------------------------------
+    // Actions (called from the rows)
+    // ------------------------------------------------------------------
     function toggle(row) {
         var e = doc[todoModel.get(row).docIndex]
         e.done = !e.done
@@ -150,6 +164,9 @@ Rectangle {
         Qt.callLater(function () { list.positionViewAtEnd() })
     }
 
+    // ------------------------------------------------------------------
+    // The note on disk
+    // ------------------------------------------------------------------
     ListModel { id: todoModel }
 
     FileView {
@@ -162,7 +179,7 @@ Rectangle {
         onFileChanged: if (!card.editing) reload()
         onLoadFailed: error => {
             if (error === FileViewError.FileNotFound)
-                card.ingest("")     
+                card.ingest("")     // note doesn't exist yet: it is created on the first task
             else
                 card.problem = "Can't read the note (" + error + ")."
         }
@@ -170,14 +187,17 @@ Rectangle {
         onSaved: card.problem = ""
     }
 
+    // Make sure the folder exists so the first save can create the note.
     Process { command: ["mkdir", "-p", card.folder]; running: true }
 
+    // Safety net in case a file-change event is missed (e.g. Obsidian replaced the file).
     Timer {
         interval: 4000
         running: true
         repeat: true
         onTriggered: if (!card.editing) file.reload()
     }
+    // Roll over to the new day's note after midnight.
     Timer {
         interval: 30000
         running: true
@@ -198,6 +218,9 @@ Rectangle {
         command: ["sh", "-c", "xdg-open \"obsidian://open?path=" + encodeURIComponent(card.filePath) + "\""]
     }
 
+    // ------------------------------------------------------------------
+    // UI
+    // ------------------------------------------------------------------
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 14
@@ -277,6 +300,7 @@ Rectangle {
                     anchors.rightMargin: 8
                     spacing: 10
 
+                    // Round checkbox
                     Rectangle {
                         Layout.preferredWidth: 20
                         Layout.preferredHeight: 20
@@ -305,6 +329,7 @@ Rectangle {
                         }
                     }
 
+                    // Click to edit the task in place
                     TextInput {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
@@ -340,6 +365,7 @@ Rectangle {
             }
         }
 
+        // Add a new task
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36

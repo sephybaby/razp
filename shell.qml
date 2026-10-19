@@ -18,7 +18,6 @@ PanelWindow {
 
     WlrLayershell.namespace: "razp-dashboard"
     WlrLayershell.layer: WlrLayer.Overlay
-    // OnDemand: the dashboard only grabs the keyboard when you click a text field (to-do list)
     WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     property color panel: "#f2210207"
@@ -31,38 +30,30 @@ PanelWindow {
     property color textColor: "#ffe8ee"
     property color hoverColor: "#58101d"
 
-    // Obsidian folder holding the to-do note (one note per day, named DD-MM-YY.md, is created here)
+    // connection to obsidian 
     property string todoFolder: "/home/sephy/Obsidian/Uni/System/To-Dos"
 
-    // Obsidian note with your quotes, one per line (shown in the bar at the bottom)
+    // quotes 
     property string quoteFile: "/home/sephy/Obsidian/Uni/System/Life Lessons & Quotes.md"
 
-    // Whether the dashboard is open. Starts hidden; the Waybar button toggles it with
-    //   qs ipc call razp toggle        (also: show / hide)
     property bool shown: false
     onShownChanged: { if (shown) refreshSystem(); else lastHidden = Date.now() }
 
-    // True while the Wi-Fi or Bluetooth manager window is open: the dashboard steps aside
-    // (it sits on the Overlay layer, so it would cover the window) and comes back on close.
     property bool toolOpen: wifiTool.running || bluetoothTool.running
     visible: shown && !toolOpen
 
-    // Esc closes the dashboard.
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut
         onActivated: root.shown = false
     }
 
-    // Close the dashboard when you click anywhere outside it.
     HyprlandFocusGrab {
         windows: [root]
         active: root.shown && !root.toolOpen
         onCleared: root.shown = false
     }
 
-    // The outside click that closes the dashboard also lands on the Waybar button; ignore a
-    // toggle that arrives right after a close so the button doesn't instantly reopen it.
     property real lastHidden: 0
 
     IpcHandler {
@@ -75,8 +66,6 @@ PanelWindow {
         function hide(): void { root.shown = false }
     }
 
-    // Starts `bin` with the cherry GTK theme from popup-theme/, or opens a terminal with an
-    // install hint if it is missing.
     function toolCommand(bin, hint) {
         var theme = Quickshell.shellDir + "/popup-theme"
         return ["sh", "-c",
@@ -104,11 +93,10 @@ PanelWindow {
     property string musicStatus: ""
 
     function profileLabel(value) {
-        return value === "power-saver" ? "POWER SAVING" : value === "performance" ? "PERFORMANCE" : "BALANCED"
+        return value === "power-saver" ? "Power saving" : value === "performance" ? "performance" : "balanced"
     }
 
     function runProcess(proc) {
-        // Quickshell Process is controlled through its running property.
         proc.running = false
         proc.running = true
     }
@@ -117,7 +105,7 @@ PanelWindow {
     property int volumeTarget: 50
 
     function setBrightness(v) {
-        root.brightnessTarget = Math.max(1, v)      // never fully black
+        root.brightnessTarget = Math.max(1, v)      
         root.brightnessState = root.brightnessTarget + "%"
         if (!brightnessTimer.running) brightnessTimer.start()
     }
@@ -291,8 +279,7 @@ Process {
                 anchors.margins: 16
                 spacing: 14
 
-                // LEFT: tall music card with circular artwork and controls
-                MusicCard {
+				MusicCard {
                     Layout.preferredWidth: 330
                     Layout.fillHeight: true
                     cherry: root.cherry
@@ -305,13 +292,11 @@ Process {
                     hoverColor: root.hoverColor
                 }
 
-                // RIGHT: status row, brightness + volume, calendar / apps / to-do, quote bar
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: 10
 
-                    // Row 1: time, Wi-Fi, Bluetooth, battery
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: false
@@ -329,7 +314,7 @@ Process {
                                 anchors.fill: parent
                                 anchors.margins: 13
                                 spacing: 3
-                                Text { text: "TIME · DAY · DATE"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
+                                Text { text: "Time"; color: root.muted; font.pixelSize: 12; font.letterSpacing: 1 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: root.currentTime
@@ -342,7 +327,7 @@ Process {
                                 Text {
                                     Layout.fillWidth: true
                                     text: root.currentDate
-                                    color: root.pink
+                                    color: root.textColor
                                     font.pixelSize: 10
                                     elide: Text.ElideRight
                                 }
@@ -366,7 +351,7 @@ Process {
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 2
-                                        Text { text: "WI-FI"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
+                                        Text { text: "Wi-Fi"; color: root.muted; font.pixelSize: 12; font.letterSpacing: 1 }
                                         Text {
                                             Layout.fillWidth: true
                                             text: root.wifiNetwork
@@ -378,15 +363,7 @@ Process {
                                     }
                                     Text { text: root.wifiState; color: root.pink; font.pixelSize: 9 }
                                 }
-                                Rectangle { Layout.fillWidth: true; height: 1; color: root.borderColor }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text { text: root.wifiSignal; color: root.muted; font.pixelSize: 10 }
-                                    Item { Layout.fillWidth: true }
-                                    Text { text: "↓ " + root.wifiDownload; color: root.textColor; font.pixelSize: 10 }
-                                    Text { text: "↑ " + root.wifiUpload; color: root.textColor; font.pixelSize: 10 }
-                                }
-                            }
+                                                            }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -407,11 +384,11 @@ Process {
                                 spacing: 5
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { text: "ᛒ"; color: root.cherry; font.pixelSize: 22 }
+                                    Text { text: ""; color: root.cherry; font.pixelSize: 22 }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 2
-                                        Text { text: "BLUETOOTH"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
+                                        Text { text: "Bluetooth"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
                                         Text {
                                             Layout.fillWidth: true
                                             text: root.bluetoothDevice
@@ -423,14 +400,7 @@ Process {
                                     }
                                     Text { text: root.bluetoothState; color: root.pink; font.pixelSize: 9 }
                                 }
-                                Rectangle { Layout.fillWidth: true; height: 1; color: root.borderColor }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text { text: "click: devices"; color: root.muted; font.pixelSize: 10 }
-                                    Item { Layout.fillWidth: true }
-                                    Text { text: "right-click: on/off"; color: root.muted; font.pixelSize: 10 }
-                                }
-                            }
+                                                            }
                             MouseArea {
                                 anchors.fill: parent
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -439,7 +409,6 @@ Process {
                             }
                         }
 
-                        // Battery: percentage in numbers + power-mode icons
                         Rectangle {
                             Layout.preferredWidth: 200
                             Layout.fillHeight: true
@@ -451,22 +420,22 @@ Process {
                                 anchors.margins: 11
                                 spacing: 4
                                 Text {
-                                    text: "BATTERY · " + root.profileLabel(root.profileState)
+                                    text: "Battery · " + root.profileLabel(root.profileState)
                                     color: root.muted
                                     font.pixelSize: 9
                                     font.letterSpacing: 1
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    spacing: 20
                                     Text { text: root.batteryPercent; color: root.textColor; font.pixelSize: 26; font.bold: true }
                                     Text {
                                         visible: root.batteryCharging
-                                        text: "charging"
-                                        color: root.pink
-                                        font.pixelSize: 10
+                                        text: ""
+                                        color: root.textColor
+                                        font.pixelSize: 20
                                         Layout.alignment: Qt.AlignBottom
-                                        Layout.bottomMargin: 5
+                                        Layout.bottomMargin: 3
                                     }
                                     Item { Layout.fillWidth: true }
                                 }
@@ -508,7 +477,6 @@ Process {
                         }
                     }
 
-                    // Row 2: brightness and volume side by side
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: false
@@ -527,9 +495,22 @@ Process {
                             anchors.fill: parent
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
-                            spacing: 12
-                            Text { text: "☼"; color: root.cherry; font.pixelSize: 21 }
-                            Text { text: "BRIGHTNESS"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
+							spacing: 12
+
+							Text { 
+								readonly property var icons: ["","","","","","","","","","","","","","",""]
+            
+							 text: {
+									let pct = brightnessSlider.value;
+								    let index = Math.floor((pct / 100) * (icons.length - 1));
+									return icons[Math.max(0, Math.min(index, icons.length - 1))];
+								}
+            
+							color: root.textColor 
+							font.pixelSize: 25 
+							font.family: "JetBrainsMono Nerd Font"
+							}
+
                             HSlider {
                                 id: brightnessSlider
                                 Layout.fillWidth: true
@@ -577,7 +558,6 @@ Process {
 
                     }
 
-                    // Row 3: calendar, app shortcuts, to-do list
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -594,7 +574,6 @@ Process {
                             borderColor: root.borderColor
                         }
 
-                        // App shortcuts: two columns (edit label / icon / command here)
                         GridLayout {
                             Layout.preferredWidth: 224
                             Layout.fillHeight: true
@@ -642,7 +621,6 @@ Process {
                             }
                         }
 
-                        // To-do list stored in your Obsidian vault
                         TodoCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -659,7 +637,6 @@ Process {
                         }
                     }
 
-                    // Quote of the moment, read from an Obsidian note
                     QuoteBar {
                         Layout.fillWidth: true
                         Layout.fillHeight: false

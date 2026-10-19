@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Shared window, styling and helpers for the Wi-Fi and Bluetooth popups."""
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango
-import gi
 import atexit
 import os
 import re
@@ -14,6 +12,7 @@ import traceback
 
 import ctypes
 
+# gtk-layer-shell must be loaded before Gtk/libwayland, otherwise layer surfaces fail.
 for _lib in ("libgtk-layer-shell.so.0", "libgtk-layer-shell.so"):
     try:
         ctypes.CDLL(_lib)
@@ -21,19 +20,22 @@ for _lib in ("libgtk-layer-shell.so.0", "libgtk-layer-shell.so"):
     except OSError:
         continue
 
+import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402,F401
 
 try:
     gi.require_version("GtkLayerShell", "0.1")
-    from gi.repository import GtkLayerShell
+    from gi.repository import GtkLayerShell  # noqa: E402
 except (ValueError, ImportError):
     GtkLayerShell = None
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 CSS_PATH = os.path.join(HERE, "style.css")
 
+# wifi-close.sh reads these to close the popups when you switch workspace.
 PIDFILES = {
     "wifi": "/tmp/waybar-wifi.pid",
     "bluetooth": "/tmp/waybar-bluetooth.pid",
@@ -42,10 +44,12 @@ PIDFILES = {
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
 def log(message):
     """Goes to /tmp/portal-*.log when started from the dashboard."""
-    print("[%s] %s" % (time.strftime("%H:%M:%S"),
-          message), file=sys.stderr, flush=True)
+    print("[%s] %s" % (time.strftime("%H:%M:%S"), message), file=sys.stderr, flush=True)
 
 
 def clean(text):
@@ -89,8 +93,7 @@ def dbus_set(service, path, iface, prop, value):
 
 def managed_objects(service):
     """{object path: {interface: {property: value}}} in one call."""
-    reply = dbus_call(
-        service, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects")
+    reply = dbus_call(service, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects")
     return reply.unpack()[0]
 
 
@@ -153,22 +156,26 @@ def claim_instance(kind):
     atexit.register(cleanup)
 
 
+# --------------------------------------------------------------------------
+# Base window
+# --------------------------------------------------------------------------
 class Portal(Gtk.Window):
     """Frameless, centred popup: header, status banner, scrolling list,
     an `extra` area for subclasses and a hint line."""
 
     def __init__(self, kind, title, size=(480, 580)):
+        # Becomes the Wayland app-id / X11 class -> use it in Hyprland rules.
         GLib.set_prgname("%s-portal" % kind)
         GLib.set_application_name(title)
         super().__init__(title=title)
 
-        self.busy = False
-        self.scanning = 0
-        self.pinned = False
-        self._gen = 0
+        self.busy = False      # a connect / forget / pair action is running
+        self.scanning = 0      # scans in flight (a scan never blocks clicks)
+        self.pinned = False    # keep the last action message on screen
+        self._gen = 0          # bumped on every refresh; older results are dropped
         self._armed = False
 
-        self._rows = {}
+        self._rows = {}        # key -> row, so the list is updated in place
         self.switch = None
         self._updating = False
         self._switch_cb = None
@@ -177,6 +184,8 @@ class Portal(Gtk.Window):
         self.set_size_request(*size)
         self.set_resizable(False)
         self.set_decorated(False)
+        # The dashboard lives on the Overlay layer, so a normal window would be hidden (and
+        # unclickable) behind it. Open on the same layer instead; the newer surface wins.
         self.layered = self._setup_layer(kind)
         if not self.layered:
             self.set_position(Gtk.WindowPosition.CENTER)
@@ -184,6 +193,7 @@ class Portal(Gtk.Window):
             self.set_skip_taskbar_hint(True)
             self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
 
+        # Transparent window so the card's rounded corners show.
         visual = self.get_screen().get_rgba_visual()
         if visual is not None:
             self.set_visual(visual)
@@ -193,20 +203,19 @@ class Portal(Gtk.Window):
         card.get_style_context().add_class("portal-card")
         self.add(card)
 
-        self.header = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Header -----------------------------------------------------------
+        self.header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.title_label = Gtk.Label(label=title)
         self.title_label.set_xalign(0)
         self.title_label.get_style_context().add_class("portal-title")
         self.header.pack_start(self.title_label, False, False, 0)
-        self.header.pack_end(self._icon_button(
-            "✕", self.close_portal), False, False, 0)
+        self.header.pack_end(self._icon_button("✕", self.close_portal), False, False, 0)
         self.refresh_btn = self._icon_button("↻", lambda: self.on_refresh())
         self.header.pack_end(self.refresh_btn, False, False, 0)
         card.pack_start(self.header, False, False, 0)
 
-        self.status_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Status banner ----------------------------------------------------
+        self.status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.status_box.get_style_context().add_class("status-box")
         self.spinner = Gtk.Spinner()
         self.spinner.set_no_show_all(True)
@@ -221,6 +230,7 @@ class Portal(Gtk.Window):
         self.status_box.pack_start(self.status_label, True, True, 0)
         card.pack_start(self.status_box, False, False, 0)
 
+        # List -------------------------------------------------------------
         self.listbox = Gtk.ListBox()
         self.listbox.set_selection_mode(Gtk.SelectionMode.NONE)
         self.listbox.set_sort_func(
@@ -231,6 +241,7 @@ class Portal(Gtk.Window):
         scroller.add(self.listbox)
         card.pack_start(scroller, True, True, 0)
 
+        # Subclass area (password prompt etc.) and hint ---------------------
         self.extra = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.pack_start(self.extra, False, False, 0)
         self.hint = Gtk.Label(label="")
@@ -238,14 +249,14 @@ class Portal(Gtk.Window):
         self.hint.get_style_context().add_class("hint")
         card.pack_start(self.hint, False, False, 0)
 
+        # Behaviour --------------------------------------------------------
         self.connect("key-press-event", self._on_key)
         self.connect("focus-in-event", self._on_focus_in)
         self.connect("focus-out-event", self._on_focus_out)
-        GLib.unix_signal_add(GLib.PRIORITY_HIGH,
-                             signal.SIGTERM, self._on_signal)
-        GLib.unix_signal_add(GLib.PRIORITY_HIGH,
-                             signal.SIGINT, self._on_signal)
+        GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, self._on_signal)
+        GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, self._on_signal)
 
+    # -- layer shell -----------------------------------------------------------
     def _setup_layer(self, kind):
         if GtkLayerShell is None:
             log("gtk-layer-shell is not installed: the popup will open BEHIND the dashboard. "
@@ -259,8 +270,7 @@ class Portal(Gtk.Window):
             GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
             GtkLayerShell.set_namespace(self, "%s-portal" % kind)
             if hasattr(GtkLayerShell, "set_keyboard_mode"):
-                GtkLayerShell.set_keyboard_mode(
-                    self, GtkLayerShell.KeyboardMode.ON_DEMAND)
+                GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.ON_DEMAND)
             else:
                 GtkLayerShell.set_keyboard_interactivity(self, True)
             return True
@@ -268,6 +278,7 @@ class Portal(Gtk.Window):
             log("layer-shell setup failed (%s); using a normal window." % exc)
             return False
 
+    # -- power switch ------------------------------------------------------------
     def add_power_switch(self, callback):
         """Visible On/Off switch in the header. callback(bool) runs on user toggles only."""
         self._switch_cb = callback
@@ -293,14 +304,14 @@ class Portal(Gtk.Window):
         self.switch_label.set_text("On" if switch.get_active() else "Off")
         self._switch_cb(switch.get_active())
 
+    # -- styling -------------------------------------------------------------
     @staticmethod
     def _load_css():
         provider = Gtk.CssProvider()
         try:
             provider.load_from_path(CSS_PATH)
         except GLib.Error as exc:
-            print("Could not load %s: %s" %
-                  (CSS_PATH, exc.message), file=sys.stderr)
+            print("Could not load %s: %s" % (CSS_PATH, exc.message), file=sys.stderr)
             return
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_USER
@@ -314,6 +325,7 @@ class Portal(Gtk.Window):
         button.connect("clicked", lambda *_: callback())
         return button
 
+    # -- status ----------------------------------------------------------------
     def set_status(self, text, kind="info", busy=False):
         """kind: "info" | "ok" | "error". Errors get a red banner."""
         context = self.status_box.get_style_context()
@@ -329,6 +341,7 @@ class Portal(Gtk.Window):
             self.spinner.stop()
             self.spinner.hide()
 
+    # -- list --------------------------------------------------------------------
     def clear_list(self):
         for child in self.listbox.get_children():
             self.listbox.remove(child)
@@ -372,6 +385,7 @@ class Portal(Gtk.Window):
         button.connect("clicked", lambda *_: callback())
         return button
 
+    # -- threading -----------------------------------------------------------------
     def bg(self, func, *args):
         """Run func in a thread. If it crashes, unlock the UI and show why
         instead of leaving the popup silently stuck."""
@@ -400,6 +414,7 @@ class Portal(Gtk.Window):
             return False
         GLib.idle_add(call)
 
+    # -- closing ---------------------------------------------------------------------
     def close_portal(self, *_):
         Gtk.main_quit()
 
@@ -418,7 +433,7 @@ class Portal(Gtk.Window):
         return False
 
     def _on_focus_in(self, *_):
-        self._armed = True
+        self._armed = True  # only auto-close once we have really had focus
         return False
 
     def _on_focus_out(self, *_):

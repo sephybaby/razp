@@ -424,7 +424,7 @@ Component.onCompleted: spotifyMetadata.start()
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "RAZP"
+                    text: "made with love  ♡  RAZP"
                     color: root.muted
                     font.pixelSize: 10
                 }
