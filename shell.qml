@@ -444,9 +444,9 @@ Process {
                                     spacing: 6
                                     Repeater {
                                         model: [
-                                            { icon: "❦", value: "power-saver" },
-                                            { icon: "⚖", value: "balanced" },
-                                            { icon: "↯", value: "performance" }
+                                            { icon: "", value: "power-saver" },
+                                            { icon: "", value: "balanced" },
+                                            { icon: "", value: "performance" }
                                         ]
                                         delegate: Rectangle {
                                             id: modeButton
@@ -538,10 +538,9 @@ Process {
                             anchors.rightMargin: 14
                             spacing: 12
                             Text {
-                                text: "◖"; color: root.cherry; font.pixelSize: 20
+                                text: "󰋋"; color: root.textColor; font.pixelSize: 20
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.runProcess(volumeToggle) }
                             }
-                            Text { text: "VOLUME"; color: root.muted; font.pixelSize: 9; font.letterSpacing: 1 }
                             HSlider {
                                 id: volumeSlider
                                 Layout.fillWidth: true
@@ -585,12 +584,12 @@ Process {
 
                             Repeater {
                                 model: [
-                                    { label: "Terminal", icon: ">_", command: "kitty" },
-                                    { label: "Obsidian", icon: "✧", command: "obsidian" },
-                                    { label: "Files", icon: "▤", command: "thunar || dolphin || nautilus || xdg-open \"$HOME\"" },
-                                    { label: "Zen", icon: "♡", command: "flatpak run app.zen_browser.zen" },
-                                    { label: "Vesktop", icon: "❖", command: "vesktop || flatpak run dev.vencord.Vesktop" },
-                                    { label: "Spotify", icon: "♫", command: "spotify-launcher || spotify || flatpak run com.spotify.Client" }
+                                    { label: "Terminal", icon: "", command: "kitty" },
+                                    { label: "Obsidian", icon: "✶", command: "obsidian" },
+                                    { label: "Files", icon: "🗋", command: "thunar || dolphin || nautilus || xdg-open \"$HOME\"" },
+                                    { label: "Zen", icon: "", command: "flatpak run app.zen_browser.zen" },
+                                    { label: "Vesktop", icon: "", command: "vesktop || flatpak run dev.vencord.Vesktop" },
+                                    { label: "Spotify", icon: "", command: "spotify-launcher || spotify || flatpak run com.spotify.Client" }
                                 ]
                                 delegate: Rectangle {
                                     id: appTile
@@ -603,7 +602,7 @@ Process {
                                     Column {
                                         anchors.centerIn: parent
                                         spacing: 6
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: appTile.modelData.icon; color: root.cherry; font.pixelSize: 24 }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: appTile.modelData.icon; color: root.textColor; font.pixelSize: 24 }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: appTile.modelData.label; color: root.textColor; font.pixelSize: 11 }
                                     }
                                     Process { id: launchApp; command: ["sh", "-lc", appTile.modelData.command] }
@@ -656,11 +655,9 @@ Process {
         }
     }
 
-    // Media actions
     Process { id: previousTrack; command: ["playerctl", "previous"] }
     Process { id: toggleTrack; command: ["playerctl", "play-pause"] }
     Process { id: nextTrack; command: ["playerctl", "next"] }
-    // Wi-Fi: iwgtk (iwd GUI)   Bluetooth: blueman-manager
     Process { id: wifiTool; command: root.toolCommand("iwgtk", "iwgtk is not installed. Install it with: yay -S iwgtk") }
     Process { id: bluetoothTool; command: root.toolCommand("blueman-manager", "blueman is not installed. Install it with: sudo pacman -S blueman") }
     Process { id: bluetoothToggle; command: ["sh", "-lc", "if bluetoothctl show | grep -q 'Powered: yes'; then bluetoothctl power off; else bluetoothctl power on; fi"] }
