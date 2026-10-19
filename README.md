@@ -15,7 +15,7 @@ A cherry-red dashboard for Hyprland, built with Quickshell. Opens from a button 
 sudo pacman -S hyprland waybar quickshell qt6-5compat playerctl networkmanager iw \
     bluez bluez-utils wireplumber brightnessctl power-profiles-daemon \
     blueman kitty ttf-jetbrains-mono-nerd
-yay -S iwgtk
+paru -S iwgtk
 ```
 
 ## Install
