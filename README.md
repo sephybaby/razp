@@ -1,7 +1,7 @@
 # razp
+it is a cherry red dashboard for hyprland, which can be connected to waybar (the files are already added in the repo)
 
-<img width="1661" height="708" alt="image" src="https://github.com/user-attachments/assets/aa40e914-84fc-45bf-910b-9516bd41a280" />
-
+<img width="1882" height="701" alt="image" src="https://github.com/user-attachments/assets/f167399f-6877-4330-9778-b46bbdbc9fc8" />
 
 inital looks, is currently in work
 
