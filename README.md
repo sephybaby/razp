@@ -63,24 +63,4 @@ Add to `~/.config/hypr/hyprland.conf`:
 ```
 exec-once = qs -c razp -d
 ```
-## Troubleshooting
-
-**Nothing appears after `qs -c razp`.** That is normal. The dashboard starts hidden. Run `qs -c razp ipc call razp toggle` in a second terminal.
-
-**`Cannot open: .../components/<song name>` warning.** Fixed in the current `MusicCard.qml`. If you still see it, update the repo.
-
-**Clicking ✦ does nothing.** Check `cat /tmp/razp-toggle.log`. If the file doesn't exist, Waybar isn't running the script: run `waybar -l debug` and click the button.
-
-**Wi-Fi / Bluetooth windows have no theme or don't open.** Check the folder is named `popup-theme` (lowercase), and that `iwgtk` / `blueman` are installed.
-
-**Wi-Fi shows `-- dBm` or "Not connected".** Your interface probably isn't `wlan0`. See [Configuration](#configuration).
-
-**razp doesn't close when clicking outside.** Your Hyprland / Quickshell may be too old for `HyprlandFocusGrab`. Update both.
-
-**"Quickshell: Config reloaded" popup.** Shown when files change. The first line of `shell.qml`, `//@ pragma NoReloadPopup`, hides it.
-
-**`WARN qt.qpa.wayland.textinput` in the terminal.** A harmless Qt warning.
-
 ---
-
-
