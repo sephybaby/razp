@@ -1,7 +1,7 @@
 # RAZP
 
 
-A cherry-red dashboard for Hyprland, built with Quickshell. Opens from a button in Waybar. Shows music, Wi-Fi, volume, brightness, battery, Bluetooth, power profile, calendar, to-dos and an app launcher. Closes with `Esc` or by clicking outside.
+A cherry-red dashboard for Hyprland, built with Quickshell. Opens from a button in Waybar. Shows music, Wi-Fi, volume, brightness, battery, Bluetooth, power profile, calendar, to-dos and has app launcher. It was inspired by [Ambxst](https://github.com/Axenide/Ambxst)
 
 <img width="1661" height="708" alt="razp" src="https://github.com/user-attachments/assets/aa40e914-84fc-45bf-910b-9516bd41a280" />
 
